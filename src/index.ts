@@ -46,6 +46,10 @@ export interface Config {
   maxTokens?: number
   /** 随图像块一起发送的提示词；`{path}` 会被替换为图像路径。 */
   prompt?: string
+  /** 没有可用视觉识别器时，是否回退为有边界的灰度 ASCII 渲染。 */
+  grayscaleEnabled?: boolean
+  /** 灰度回退网格宽/高（像素）。 */
+  grayscaleSize?: number
 }
 
 /**
@@ -59,6 +63,8 @@ export const Config: z<Config> = z.object({
   timeoutMs: z.number(),
   maxTokens: z.number().step(1).min(1),
   prompt: z.string(),
+  grayscaleEnabled: z.boolean(),
+  grayscaleSize: z.number().step(1).min(1).max(128),
 })
 
 /**

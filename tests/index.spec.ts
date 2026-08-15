@@ -6,12 +6,13 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import sharp from 'sharp'
 import { AttachmentId } from '@deepseek-ai/dsh-attachment'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import LlmService, { LlmAdapter } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, LlmModelInfo, LlmResolvedModelInfo, StreamChunk } from '@deepseek-ai/dsh-llm'
 import * as ImageRecognition from '../src/index.ts'
-import { resolveEffectiveImageRecognition } from '../src/image-recognition.ts'
+import { renderGrayscaleAscii, resolveEffectiveImageRecognition } from '../src/image-recognition.ts'
 import type { ImageRecognitionServiceShape } from '../src/image-recognition.ts'
 
 const ATTACHMENT: ImageAttachmentRef = {
@@ -53,7 +54,16 @@ beforeEach(async () => {
   await ctx.plugin(LlmService)
   adapter = new RecognitionAdapter()
   ctx.llm.registerAdapter(['opencode-go'], adapter)
-  ctx.provide('attachments', {} as never)
+  const png = await sharp({
+    create: { width: 2, height: 1, channels: 3, background: { r: 0, g: 0, b: 0 } },
+  }).png().toBuffer()
+  const data = new Uint8Array(png)
+  ctx.provide('attachments', {
+    readImage: () => Promise.resolve({
+      ref: { attachmentId: 'sha256:00', mediaType: 'image/png', bytes: data.byteLength, width: 1, height: 1 },
+      data,
+    }),
+  } as never)
 })
 
 afterEach(async () => {
@@ -72,6 +82,8 @@ describe('image-recognition plugin', () => {
       model: 'mimo-v2.5',
       timeoutMs: 120_000,
       maxTokens: 1024,
+      grayscaleEnabled: false,
+      grayscaleSize: 32,
     })
     expect(service.settings().prompt).toContain('图像识别助手')
   })
@@ -102,20 +114,39 @@ describe('image-recognition plugin', () => {
     expect(resolved.enabled).toBe(false)
     expect(resolved.model).toBeUndefined()
   })
+
+  it('渲染有边界的灰度 ASCII 网格', async () => {
+    const png = await sharp({
+      create: { width: 2, height: 1, channels: 3, background: { r: 0, g: 0, b: 0 } },
+    }).png().toBuffer()
+    const text = await renderGrayscaleAscii(new Uint8Array(png), 2)
+    expect(text).toMatch(/^2x1\n/)
+  })
+
+  it('没有视觉识别器且启用灰度回退时返回 ASCII 文本', async () => {
+    adapter.resolveModel = (_provider: string, model: string) =>
+      Promise.resolve({ provider: 'opencode-go', id: model, name: model, inputModalities: ['text'] })
+    await ctx.plugin(ImageRecognition, { grayscaleEnabled: true, grayscaleSize: 4 })
+    const service = ctx.get('imageRecognition')
+    if (service === undefined) throw new Error('expected the imageRecognition service')
+    const text = await service.recognizeAttachment(ATTACHMENT, '请描述 red.png。')
+    expect(text).toContain('x')
+    expect(adapter.calls).toHaveLength(0)
+  })
 })
 
 describe('resolveEffectiveImageRecognition', () => {
   it('本地节逐字段优先，其次插件服务，最后默认值', () => {
     const service: ImageRecognitionServiceShape = {
       enabled: true,
-      settings: () => ({ enabled: true, provider: 'opencode-go', model: 'mimo-v2.5', timeoutMs: 120_000, maxTokens: 128, prompt: 'service prompt' }),
+      settings: () => ({ enabled: true, provider: 'opencode-go', model: 'mimo-v2.5', timeoutMs: 120_000, maxTokens: 128, prompt: 'service prompt', grayscaleEnabled: false, grayscaleSize: 16 }),
       recognizeAttachment: async () => '',
     }
     expect(resolveEffectiveImageRecognition(undefined, service)).toEqual({
-      enabled: true, provider: 'opencode-go', model: 'mimo-v2.5', timeoutMs: 120_000, maxTokens: 128, prompt: 'service prompt',
+      enabled: true, provider: 'opencode-go', model: 'mimo-v2.5', timeoutMs: 120_000, maxTokens: 128, prompt: 'service prompt', grayscaleEnabled: false, grayscaleSize: 16,
     })
     expect(resolveEffectiveImageRecognition({ enabled: false, model: 'mimo-v2.5-pro' }, service)).toEqual({
-      enabled: false, provider: 'opencode-go', model: 'mimo-v2.5-pro', timeoutMs: 120_000, maxTokens: 128, prompt: 'service prompt',
+      enabled: false, provider: 'opencode-go', model: 'mimo-v2.5-pro', timeoutMs: 120_000, maxTokens: 128, prompt: 'service prompt', grayscaleEnabled: false, grayscaleSize: 16,
     })
   })
 
