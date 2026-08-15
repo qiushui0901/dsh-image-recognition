@@ -16,13 +16,11 @@ import { deadline, timeoutOf } from '@deepseek-ai/dsh-timeout'
 /** 单次识别调用的超时错误码。 */
 export const IMAGE_RECOGNITION_TIMEOUT_CODE = 'IMAGE_RECOGNITION_TIMEOUT'
 
-/** 随产品交付的默认识别提示词：完整描述 + 逐字提取文字。 */
-export const DEFAULT_IMAGE_RECOGNITION_PROMPT = `你是图像识别助手。请仔细查看这张图片，然后完成以下任务：
-1. 用中文完整描述图片的内容：主体、布局、背景、风格。
-2. 逐字提取图片中出现的所有文字（包括界面文案、代码、表格内容），保持原有结构和格式。
-3. 如果图片是界面截图或图表，说明其组成部分和含义。
-4. 界面文案中的「密钥」（API key）等筛选、统计或配置术语，请统一用「供应商」（provider）表述。
-直接输出识别结果，不要任何客套话。`
+/** 随产品交付的默认识别提示词：简洁描述 + 逐字提取文字。 */
+export const DEFAULT_IMAGE_RECOGNITION_PROMPT = '你是图像识别助手。请用中文简洁描述图片内容（主体、布局、背景、风格）；逐字提取图中可见文字（界面文案、代码、表格），保持原有结构；界面截图或图表说明组成部分和含义；「密钥」(API key) 等筛选、统计或配置术语统一写作「供应商」(provider)。直接输出识别结果，不要客套。'
+
+/** 随产品交付的识别输出上限；描述通常很短，设置上限可避免长尾生成拖慢调用。 */
+export const DEFAULT_IMAGE_RECOGNITION_MAX_TOKENS = 1024
 
 /** 面向部署的识别设置，所有消费方共用。 */
 export interface ImageRecognitionSettings {
@@ -32,6 +30,8 @@ export interface ImageRecognitionSettings {
   model: string
   /** 单次识别调用预算（毫秒）。 */
   timeoutMs: number
+  /** 单次输出 token 上限，作为识别请求的 `maxTokens` 发送。 */
+  maxTokens: number
   /** 随图像块一起发送的提示词；`{path}` 会被替换为图像路径。 */
   prompt: string
 }
@@ -41,6 +41,7 @@ export const DEFAULT_IMAGE_RECOGNITION_SETTINGS: ImageRecognitionSettings = Obje
   provider: 'opencode-go',
   model: 'mimo-v2.5',
   timeoutMs: 120_000,
+  maxTokens: DEFAULT_IMAGE_RECOGNITION_MAX_TOKENS,
   prompt: DEFAULT_IMAGE_RECOGNITION_PROMPT,
 })
 
@@ -54,6 +55,7 @@ export function resolveImageRecognitionSettings(partial: Partial<ImageRecognitio
     provider: partial?.provider ?? DEFAULT_IMAGE_RECOGNITION_SETTINGS.provider,
     model: partial?.model ?? DEFAULT_IMAGE_RECOGNITION_SETTINGS.model,
     timeoutMs: partial?.timeoutMs ?? DEFAULT_IMAGE_RECOGNITION_SETTINGS.timeoutMs,
+    maxTokens: partial?.maxTokens ?? DEFAULT_IMAGE_RECOGNITION_SETTINGS.maxTokens,
     prompt: partial?.prompt ?? DEFAULT_IMAGE_RECOGNITION_SETTINGS.prompt,
   }
 }
@@ -91,6 +93,7 @@ export function resolveEffectiveImageRecognition(
     provider: local?.provider ?? base?.provider ?? DEFAULT_IMAGE_RECOGNITION_SETTINGS.provider,
     model: local?.model ?? base?.model ?? DEFAULT_IMAGE_RECOGNITION_SETTINGS.model,
     timeoutMs: local?.timeoutMs ?? base?.timeoutMs ?? DEFAULT_IMAGE_RECOGNITION_SETTINGS.timeoutMs,
+    maxTokens: local?.maxTokens ?? base?.maxTokens ?? DEFAULT_IMAGE_RECOGNITION_SETTINGS.maxTokens,
     prompt: local?.prompt ?? base?.prompt ?? DEFAULT_IMAGE_RECOGNITION_SETTINGS.prompt,
   }
 }
@@ -161,6 +164,7 @@ export async function recognizeAttachmentImage(
     provider: settings.provider,
     model: settings.model,
     messages: [message],
+    maxTokens: settings.maxTokens,
     signal: timeout.signal,
   })
   try {

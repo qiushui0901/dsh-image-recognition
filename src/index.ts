@@ -11,6 +11,7 @@
  *     enabled: true
  *     provider: opencode-go
  *     model: mimo-v2.5
+ *     maxTokens: 1024
  * ```
  *
  * @module dsh-image-recognition
@@ -41,6 +42,8 @@ export interface Config {
   model?: string
   /** 单次识别调用预算（毫秒）。 */
   timeoutMs?: number
+  /** 单次输出 token 上限，作为识别请求的 `maxTokens` 发送。 */
+  maxTokens?: number
   /** 随图像块一起发送的提示词；`{path}` 会被替换为图像路径。 */
   prompt?: string
 }
@@ -54,6 +57,7 @@ export const Config: z<Config> = z.object({
   provider: z.string(),
   model: z.string(),
   timeoutMs: z.number(),
+  maxTokens: z.number().step(1).min(1),
   prompt: z.string(),
 })
 

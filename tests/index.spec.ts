@@ -71,6 +71,7 @@ describe('image-recognition plugin', () => {
       provider: 'opencode-go',
       model: 'mimo-v2.5',
       timeoutMs: 120_000,
+      maxTokens: 1024,
     })
     expect(service.settings().prompt).toContain('图像识别助手')
   })
@@ -91,7 +92,7 @@ describe('image-recognition plugin', () => {
     const text = await service.recognizeAttachment(ATTACHMENT, '请描述 red.png。')
     expect(text).toBe('一张红色图片。')
     expect(adapter.calls).toHaveLength(1)
-    expect(adapter.calls[0]).toMatchObject({ provider: 'opencode-go', model: 'mimo-v2.5' })
+    expect(adapter.calls[0]).toMatchObject({ provider: 'opencode-go', model: 'mimo-v2.5', maxTokens: 1024 })
   })
 
   it('暴露配置 schema 作为插件 Config', () => {
@@ -107,14 +108,14 @@ describe('resolveEffectiveImageRecognition', () => {
   it('本地节逐字段优先，其次插件服务，最后默认值', () => {
     const service: ImageRecognitionServiceShape = {
       enabled: true,
-      settings: () => ({ enabled: true, provider: 'opencode-go', model: 'mimo-v2.5', timeoutMs: 120_000, prompt: 'service prompt' }),
+      settings: () => ({ enabled: true, provider: 'opencode-go', model: 'mimo-v2.5', timeoutMs: 120_000, maxTokens: 128, prompt: 'service prompt' }),
       recognizeAttachment: async () => '',
     }
     expect(resolveEffectiveImageRecognition(undefined, service)).toEqual({
-      enabled: true, provider: 'opencode-go', model: 'mimo-v2.5', timeoutMs: 120_000, prompt: 'service prompt',
+      enabled: true, provider: 'opencode-go', model: 'mimo-v2.5', timeoutMs: 120_000, maxTokens: 128, prompt: 'service prompt',
     })
     expect(resolveEffectiveImageRecognition({ enabled: false, model: 'mimo-v2.5-pro' }, service)).toEqual({
-      enabled: false, provider: 'opencode-go', model: 'mimo-v2.5-pro', timeoutMs: 120_000, prompt: 'service prompt',
+      enabled: false, provider: 'opencode-go', model: 'mimo-v2.5-pro', timeoutMs: 120_000, maxTokens: 128, prompt: 'service prompt',
     })
   })
 
